@@ -3,7 +3,8 @@
         "0":{
             "0_0":{
                 "pathtoImage":"/src",
-                "text":"Food"
+                "text":"Food",
+                "msg": "Hey im hungry, can I have something to eat"
             }
         }
     }
