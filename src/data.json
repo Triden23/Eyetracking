@@ -1,10 +1,86 @@
 {
+    "PathToRes": "/res",
     "Pages":{
         "0":{
             "0_0":{
-                "pathtoImage":"/src",
+                "pathtoImage":"food.png",
                 "text":"Food",
                 "msg": "Hey im hungry, can I have something to eat"
+            },
+            "0_1":{
+                "pathtoImage": "",
+                "text": "Cold",
+                "msg": "Hey im feeling cold, could we turn up the ac or could I get a blanket"
+            },
+            "0_2":{
+                "pathtoImage": "",
+                "text": "Hot",
+                "msg": "Hey im feeling hot. Could you uncover me or maybe change me into something more comfortable"
+            },
+            "0_3": {
+                "pathToImage": "",
+                "text": "",
+                "msg": ""
+            },
+            "1_0":{
+                "pathtoImage":"",
+                "text":"",
+                "msg": ""
+            },
+            "1_1":{
+                "pathtoImage": "",
+                "text": "",
+                "msg": ""
+            },
+            "1_2":{
+                "pathtoImage": "",
+                "text": "",
+                "msg": ""
+            },
+            "1_3": {
+                "pathToImage": "",
+                "text": "",
+                "msg": ""
+            },
+            "2_0":{
+                "pathtoImage":"",
+                "text":"",
+                "msg": ""
+            },
+            "2_1":{
+                "pathtoImage": "",
+                "text": "",
+                "msg": ""
+            },
+            "2_2":{
+                "pathtoImage": "",
+                "text": "",
+                "msg": ""
+            },
+            "2_3": {
+                "pathToImage": "",
+                "text": "",
+                "msg": ""
+            },
+            "3_0":{
+                "pathtoImage":"",
+                "text":"",
+                "msg": ""
+            },
+            "3_1":{
+                "pathtoImage": "",
+                "text": "",
+                "msg": ""
+            },
+            "3_2":{
+                "pathtoImage": "",
+                "text": "",
+                "msg": ""
+            },
+            "3_3": {
+                "pathToImage": "",
+                "text": "",
+                "msg": ""
             }
         }
     }

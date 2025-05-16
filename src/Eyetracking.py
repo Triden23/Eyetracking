@@ -4,7 +4,9 @@ from threading import Thread
 import time
 import math
 import json
-from cvzone.FaceMeshModule import FaceMeshDetector  # ✅ cvzone import
+
+from PIL.ImageChops import screen
+from cvzone.FaceMeshModule import FaceMeshDetector  #Maybe change the library in use. Do more research
 
 
 class Eyetracking:
@@ -13,9 +15,23 @@ class Eyetracking:
         self.dataPath = "data.json"
         self.data = json.load(open(self.dataPath))
 
+        self.run = True
+
+        # Modes
+
+        # DO NOT FUCKING CHANGE THIS ILL KILL YOU
+        self.MODE_CALIBRATE = "CALIBRATE"
+        self.MODE_CALIBRATE_WAIT = "CALIBRATE_WAIT"
+        self.MODE_LOCK = "LOCK"
+        self.MODE_NORMAL = "NORMAL"
+
+        #Assign the current operation to this variable to help lock out anything
+        self.Current_Mode = self.MODE_CALIBRATE
+
         # cvzone setup
         self.cap = cv2.VideoCapture(0)
         self.detector = FaceMeshDetector(maxFaces=1)
+
 
         # Tkinter setup
         self.root = tk.Tk()
@@ -44,8 +60,17 @@ class Eyetracking:
         self.canvas.place(x=0, y=0)
         self.ring_id = None
         self.text_id = None
-
         self.create_buttons()
+
+        # KeyListener(Space bar only in CALIBRATE_WAIT)
+        self.canvas.bind("<KeyPress>", self.HandleKeyPress)
+
+        # Calibration vars
+        self.CalibrationCounter = 0
+        self.Calibration_Data = CalibrationData()
+        self.Calibration_Point = self.canvas.create_oval(0, 0, 0, 0)
+        self.Calibration_Continue_Flag = False
+        self.Calibration_Capture_Flag = False
         Thread(target=self.track_gaze, daemon=True).start()
         self.root.mainloop()
 
@@ -97,26 +122,7 @@ class Eyetracking:
                           height=self.screen_height // self.rows)
                 self.buttons.append(btn)
 
-    def draw_progress_ring(self, x, y, size, progress):
-        if self.ring_id:
-            self.canvas.delete(self.ring_id)
-            self.ring_id = None
-        if self.text_id:
-            self.canvas.delete(self.text_id)
-            self.text_id = None
-        angle = int(360 * progress)
-        self.ring_id = self.canvas.create_arc(
-            x, y, x + size, y + size,
-            start=90, extent=-angle,
-            style="arc", outline="blue", width=5
-        )
-        seconds_left = max(0, math.ceil(self.DWELL_SECONDS * (1 - progress)))
-        self.text_id = self.canvas.create_text(
-            x + size // 2, y + size // 2,
-            text=str(seconds_left),
-            font=("Arial", 24, "bold"),
-            fill="blue"
-        )
+
 
     def update_button_images(self):
         print("Updating Images")  # Placeholder
@@ -150,7 +156,7 @@ class Eyetracking:
             btn_x = col * self.screen_width // self.cols
             btn_y = row * self.screen_height // self.rows
             size = min(self.screen_width // self.cols, self.screen_height // self.rows) // 2
-            self.draw_progress_ring(btn_x + size // 2, btn_y + size // 2, size, min(progress, 1.0))
+
             if progress >= 1.0:
                 self.buttons[current_index].invoke()
                 self.gaze_start_time = None
@@ -159,33 +165,200 @@ class Eyetracking:
             self.canvas.delete("all")
 
     def track_gaze(self):
-        while self.cap.isOpened():
-            success, frame = self.cap.read()
-            if not success:
-                continue
+        while self.cap.isOpened() and self.run :
 
-            frame = cv2.flip(frame, 1)
-            frame, faces = self.detector.findFaceMesh(frame, draw=False)
+                success, frame = self.cap.read()
+                if not success:
+                    continue
 
-            if faces:
-                face = faces[0]
-                left_eye = face[33]
-                right_eye = face[263]
+                frame = cv2.flip(frame, 1)
+                frame, faces = self.detector.findFaceMesh(frame, draw=False)
 
-                gaze_x = (left_eye[0] + right_eye[0]) / 2
-                gaze_y = (left_eye[1] + right_eye[1]) / 2
+                if faces:
+                    face = faces[0]
+                    left_eye = face[33]
+                    right_eye = face[263]
 
-                # Convert to screen coordinates
-                self.update_buttons(gaze_x, gaze_y)
+                    gaze_x = (left_eye[0] + right_eye[0]) / 2
+                    gaze_y = (left_eye[1] + right_eye[1]) / 2
 
-            try:
-                self.root.update_idletasks()
-                self.root.update()
-            except tk.TclError:
-                break
+                    print(f"{gaze_x}, {gaze_y}")
 
-        self.cap.release()
+                    if self.Current_Mode == self.MODE_CALIBRATE or self.Current_Mode == self.MODE_CALIBRATE_WAIT:
+                        self.Calibrate()
+                        if self.Current_Mode == self.MODE_CALIBRATE_WAIT and self.Calibration_Capture_Flag:
+                            self.Calibration_Data.setBaseData(self.CalibrationCounter, left_eye[0], left_eye[1], right_eye[0], right_eye[1])
 
+                            self.Calibration_Capture_Flag = False
+                            self.Current_Mode = False
+
+                            self.CalibrationCounter += 1
+                            if self.CalibrationCounter > 3:
+                                self.CalibrationCounter = 0
+                    else:
+                        # Convert to screen coordinates
+                        self.update_buttons(gaze_x, gaze_y)
+
+                try:
+                    self.root.update_idletasks()
+                    self.root.update()
+                except tk.TclError:
+                    self.run = False
+
+            self.cap.release()
+
+
+    def calibrationMarker(self,x,y):
+        size = 50
+        self.canvas.delete(self.Calibration_Point)
+        self.Calibration_Point = self.canvas.create_oval(x, x + size, y, y + size, fill="red")
+        self.Current_Mode = self.MODE_CALIBRATE_WAIT
+    '''
+    
+    Get 4 points from the middle of the screen
+    
+    Draw a circle wait for user input, input triggers a gather point, passing to Calibration object one by one.
+    Normalize data -> Pull up webcam on full screen (Testing only) Optional check again
+    
+    
+    '''
+
+    def Calibrate(self):
+        x = 0
+        y = 0
+        if self.Current_Mode == self.MODE_CALIBRATE:
+            if self.CalibrationCounter == 0:
+                x = self.screen_width/2
+                y = 0
+            elif self.CalibrationCounter == 1:
+                x = self.screen_width
+                y = self.screen_height/2
+            elif self.CalibrationCounter == 2:
+                x = self.screen_width/2
+                y = self.screen_height
+            elif self.CalibrationCounter == 3:
+                x = 0
+                y = self.screen_height/2
+
+            self.calibrationMarker(x,y)
+            self.Current_Mode = self.MODE_CALIBRATE_WAIT
+                #Get gaze data
+
+    def HandleKeyPress(self, event):
+        if(self.Current_Mode == self.MODE_CALIBRATE_WAIT):
+            print(f"{event.key} pressed") #Temp to grab keypress
+            if(event.key == 32):
+                self.Calibration_Capture_Flag = True
+
+
+
+class CalibrationData:
+    def __init__(self):
+
+        # Top point
+
+        self.leftEye_TopOffSet_x = 0
+        self.leftEye_TopOffSet_y = 0
+
+        self.rightEye_TopOffSet_x = 0
+        self.rightEye_TopOffSet_y = 0
+
+        # Right point
+
+        self.leftEye_RightOffSet_x = 0
+        self.leftEye_RightOffSet_y = 0
+
+        self.rightEye_RightOffSet_x = 0
+        self.rightEye_RightOffSet_y = 0
+
+        # Bottom point
+
+        self.leftEye_BottomOffSet_x = 0
+        self.leftEye_BottomOffSet_y = 0
+
+        self.rightEye_BottomOffSet_x = 0
+        self.rightEye_BottomOffSet_y = 0
+
+        # Left point
+
+        self.leftEye_LeftOffSet_x = 0
+        self.rightEye_LeftOffSet_x = 0
+
+        self.leftEye_LeftOffSet_y = 0
+        self.rightEye_LeftOffSet_y = 0
+
+        # Normalized Data (the middle of 2 points)
+
+        self.Normalized_TopOffSet_x = 0
+        self.Normalized_TopOffSet_y = 0
+
+        self.Normalized_RightOffSet_x = 0
+        self.Normalized_RightOffSet_y = 0
+
+        self.Normalized_BottomOffSet_x = 0
+        self.Normalized_BottomOffSet_y = 0
+
+        self.Normalized_LeftOffSet_x = 0
+        self.Normalized_LeftOffSet_y = 0
+
+        #Top then clock wise
+        self.NormalizedList = [[]]
+
+
+
+    def normalizeData(self):
+        self.Normalized_TopOffSet_x = (self.rightEye_TopOffSet_x + self.leftEye_TopOffSet_x)/2
+        self.Normalized_TopOffSet_y = (self.rightEye_TopOffSet_y + self.leftEye_TopOffSet_y)/2
+
+        self.Normalized_RightOffSet_x = (self.rightEye_RightOffSet_x + self.leftEye_RightOffSet_x)/2
+        self.Normalized_RightOffSet_y = (self.rightEye_RightOffSet_y + self.leftEye_RightOffSet_y)/2
+
+        self.Normalized_BottomOffSet_x = (self.rightEye_BottomOffSet_x + self.leftEye_BottomOffSet_x)/2
+        self.Normalized_BottomOffSet_y = (self.rightEye_BottomOffSet_y + self.leftEye_BottomOffSet_y)/2
+
+        self.Normalized_LeftOffSet_x = (self.rightEye_LeftOffSet_x + self.leftEye_LeftOffSet_x)/2
+        self.Normalized_LeftOffSet_y = (self.rightEye_LeftOffSet_y + self.leftEye_LeftOffSet_y)/2
+
+        self.Normalized_List = [[self.Normalized_TopOffSet_x,self.Normalized_TopOffSet_y],
+                                [self.Normalized_RightOffSet_x,self.Normalized_RightOffSet_y],
+                                [self.Normalized_BottomOffSet_x,self.Normalized_BottomOffSet_y],
+                                [self.Normalized_LeftOffSet_x,self.Normalized_LeftOffSet_y]]
+
+
+    # Returns X and Y of offset index
+    def getNormalizedData(self, index):
+        if index >= len(self.NormalizedList):
+            print("Index out of range returning default of index - 0")
+            return self.NormalizedList[0]
+        else:
+            return self.NormalizedList[index]
+
+    # Sets the value, X1,Y1 left Eye, X2,Y2 right eye
+    # Top,Right,Bottom,Right in that order 0-3
+    def setBaseData(self, index, x1, y1, x2, y2):
+        if index >= len(self.NormalizedList):
+            print("Index out of bounds")
+        else:
+            if index == "0":
+                self.leftEye_TopOffSet_x = x1
+                self.leftEye_TopOffSet_y = y1
+                self.rightEye_TopOffSet_x = x2
+                self.rightEye_TopOffSet_y = y2
+            elif index == 1:
+                self.leftEye_RightOffSet_x = x1
+                self.leftEye_RightOffSet_y = y1
+                self.rightEye_RightOffSet_x = x2
+                self.rightEye_RightOffSet_y = y2
+            elif index == 2:
+                self.leftEye_BottomOffSet_x = x1
+                self.leftEye_BottomOffSet_y = y1
+                self.rightEye_BottomOffSet_x = x2
+                self.rightEye_BottomOffSet_y = y2
+            elif index == 3:
+                self.leftEye_LeftOffSet_x = x1
+                self.leftEye_LeftOffSet_y = y1
+                self.rightEye_LeftOffSet_x = x2
+                self.rightEye_LeftOffSet_y = y2
 
 if __name__ == "__main__":
     Eyetracking()
